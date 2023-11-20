@@ -1,0 +1,8 @@
+---
+- name: Deploy Jenkins
+  hosts: jenkins
+  become: true 
+  become_user: root 
+  roles:
+    - common
+    - jenkins

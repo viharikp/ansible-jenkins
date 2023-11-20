@@ -1,0 +1,69 @@
+# port 80 with redirect to 443 Jenkins and upstream to 8085
+# port 9876 jmx
+# port 22   rsync 
+# port 873  rsync
+# port 8085 jenkins
+
+global
+    nbproc  6
+    cpu-map 1 0
+    cpu-map 2 1
+    cpu-map 3 2
+    cpu-map 4 3
+    cpu-map 5 4
+    cpu-map 6 5
+
+    log 127.0.0.1 syslog
+    chroot /var/lib/haproxy
+    stats socket /var/run/haproxy/haproxy_1.sock mode 0666 level admin process 1
+    stats socket /var/run/haproxy/haproxy_2.sock mode 0666 level admin process 2
+    stats socket /var/run/haproxy/haproxy_3.sock mode 0666 level admin process 3
+    stats socket /var/run/haproxy/haproxy_4.sock mode 0666 level admin process 4
+    stats socket /var/run/haproxy/haproxy_5.sock mode 0666 level admin process 5
+    stats socket /var/run/haproxy/haproxy_6.sock mode 0666 level admin process 6
+
+    maxconn 70000
+    user haproxy
+    group haproxy
+    daemon
+    tune.ssl.default-dh-param 2048
+
+defaults
+    log global
+    mode    http
+    option  httplog
+    option  dontlognull
+    retries 3
+    option redispatch
+    maxconn 70000
+    timeout connect  30000ms
+    timeout client  35m
+    timeout server  55m
+
+### DEFAULT FRONTEND ###
+frontend jenkins
+    bind *:80
+    bind *:443 ssl crt /etc/ssl/certs/haproxy.crt
+    mode http
+    log 127.0.0.1 syslog
+    option forwardfor
+    http-request set-header X-Forwarded-Proto https if { ssl_fc }
+    redirect scheme https if !{ ssl_fc }
+    default_backend jenkins-app
+
+### DEFAULT BACKEND ###
+backend jenkins-app
+    mode http
+    balance leastconn
+    option httpchk HEAD /
+    http-check expect status 200
+    server jenkins {{ jenkins_server }}:{{ jenkins_port }} maxconn 32
+
+### LB statistic block ###
+listen stats
+    bind *:2020
+    mode http
+    stats enable
+    stats uri /
+    stats realm Haproxy\ Statistics
+    stats auth admin:password

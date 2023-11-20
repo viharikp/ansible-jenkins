@@ -1,0 +1,183 @@
+---
+### Jenkins dependencies configuration ###
+
+- name: Download Jenkins GPG key
+  become: true
+  get_url:
+    url: https://pkg.jenkins.io/debian/jenkins.io-2023.key
+    dest: /usr/share/keyrings/jenkins-keyring.asc
+    mode: '0644'
+
+- name: Add Jenkins repository
+  become: true
+  shell: "echo deb [signed-by=/usr/share/keyrings/jenkins-keyring.asc] https://pkg.jenkins.io/debian binary/ | sudo tee /etc/apt/sources.list.d/jenkins.list > /dev/null"
+
+- name: Update System Repository
+  become: true
+  apt:
+    update_cache: yes
+
+- name: Check if group 500 exists
+  command: getent group 500
+  register: jenkins_group_check
+  ignore_errors: true
+
+- name: Add group 500
+  group:
+    name: jenkins
+    gid: 500
+    state: present
+  tags: group
+  when: jenkins_group_check.rc != 0
+
+- name: Check if jenkins user exists
+  command: id jenkins
+  register: jenkins_user_check
+  ignore_errors: true
+
+- name: Create jenkins user
+  user:
+    name: jenkins
+    comment: "Jenkins User"
+    home: /var/lib/jenkins
+    uid: 10287
+    group: 500
+    shell: /bin/bash
+  when: jenkins_user_check.rc != 0
+
+###Jenkins deployment###
+
+- name: Update System Repository
+  become: true
+  apt:
+    update_cache: yes
+
+- name: Install Dependencies
+  become: true
+  apt:
+    name:
+      - fontconfig
+      - openjdk-11-jre
+      - aptitude
+      - python3
+      - python3-apt
+      - python3-pip
+      - nfs-common
+      - tightvncserver
+      - mailutils
+      - cron
+    state: present
+
+- name: Install Jenkins
+  become: true
+  apt:
+    name:
+      - 'jenkins={{ jenkins_version }}'
+    state: present
+
+###Jenkins configuration###
+
+- name: Permission Jenkins
+  file:
+    path: /jenkins_home
+    state: directory
+    mode: 0755
+    owner: jenkins
+    group: jenkins
+
+- name: Install python components
+  pip:
+    name:
+      - virtualenv
+      - virtualenvwrapper
+
+- name: Chown Jenkins Log
+  file:
+    path: /var/log/jenkins
+    state: directory
+    owner: jenkins
+    group: jenkins
+    recurse: yes
+
+- name: Chown Jenkins Cache
+  file:
+    path: /var/cache/jenkins
+    state: directory
+    owner: jenkins
+    group: jenkins
+    recurse: yes
+
+- name: Chown Jenkins Share
+  file:
+    path: /usr/share/jenkins
+    state: directory
+    owner: jenkins
+    group: jenkins
+    recurse: yes
+
+- name: Update Jenkins ssh private key
+  copy:
+    content: "{{ jenkins_ssh_private }}"
+    dest: /var/lib/jenkins/.ssh/id_rsa
+    mode: 0600
+    owner: jenkins
+    group: 500
+
+- name: Update Jenkins ssh public key
+  copy:
+    content: "{{ jenkins_ssh_public }}"
+    dest: /var/lib/jenkins/.ssh/id_rsa.pub
+    mode: 0600
+    owner: jenkins
+    group: 500
+
+- name: Set the Jenkins Home Directory
+  become: true
+  shell: |
+    echo "export JENKINS_HOME=~/jenkins_home" >> ~/.bash_profile
+    sudo service jenkins restart
+
+### Config for Jenkins Service ###
+
+# Changes to systemd - File module will create a directory if missing
+- name: Create jenkins.service.d directory
+  file:
+    path: /etc/systemd/system/jenkins.service.d/
+    state: directory
+    owner: root
+    group: root
+    mode: 0755
+
+# template module will create a file
+- name: Copy jenkins.service drop-in
+  template:
+    src: jenkins.service.j2
+    dest: /etc/systemd/system/jenkins.service.d/override.conf
+    owner: root
+    group: root
+    mode: 0644
+  notify: daemon_reload # Don't forget to do `systemctl daemon-reload`!
+
+- include: handlers.yml
+
+### Log Rotation ###
+
+- name: Check if logrotate package is installed
+  become: true
+  stat:
+    path: /usr/sbin/logrotate
+  register: logrotate_installed
+
+- name: Install logrotate if not installed
+  become: true
+  apt:
+    name: logrotate
+    state: present
+  when: not logrotate_installed.stat.exists
+
+- name: Create logrotate configuration file for Jenkins
+  template:
+    src: logrotate.j2
+    dest: /etc/logrotate.d/jenkins
+  notify: restart logrotate
+  become: true

@@ -1,0 +1,57 @@
+---
+### HAProxy deployment ###
+
+- name: Install the latest version of HAProxy and Admin Tools
+  apt:
+    name: '{{ item }}'
+    update_cache: yes
+    cache_valid_time: 3600
+    autoclean: yes
+    autoremove: yes
+    state: present
+  loop: '{{ components }}'
+  tags: haproxy_install
+
+### HAProxy Configuration ###
+
+- name: Push HAProxy configuration file
+  template:
+    src: haproxy.cfg.j2
+    dest: /etc/haproxy/haproxy.cfg
+    owner: root
+    mode: 0644
+  tags: haproxy_config
+
+- name: Pushing HAProxy SSL Certificate
+  copy:
+    content: '{{ jenkins_ssl__crt }}'
+    dest: /etc/ssl/certs/haproxy.crt
+    owner: root
+    mode: 0644
+  tags: haproxy_certificate
+
+###HAProxy System Configuration###
+- name: Add Open Files Value for HAProxy
+  pam_limits:
+    domain: '{{ item.domain }}'
+    limit_type: '{{ item.type }}'
+    limit_item: '{{ item.item }}'
+    value: '{{ item.value }}'
+  loop: '{{ haproxy_file_limits }}'
+  tags: haproxy_file_limits
+
+- name: Add systemctl parameters
+  sysctl:
+    name:  '{{ item.name }}'
+    value: '{{ item.value }}'
+    reload: yes
+    state: present
+  loop: '{{ systemctl_parameters }}'
+  tags: haproxy_systemctl
+
+###HAProxy Restart###
+- name: Restart HAProxy service
+  become: true
+  service:
+    name: haproxy
+    state: restarted

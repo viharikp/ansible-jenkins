@@ -1,0 +1,9 @@
+---
+- name: Deploy HAproxy
+  hosts: proxies
+  become: true 
+  become_user: root 
+  gather_facts: no
+  roles:
+    - common
+    - haproxy

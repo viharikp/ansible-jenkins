@@ -1,0 +1,33 @@
+###########################################################################################
+#                                                                                         #
+#                               Playbook Variables                                        #
+#                                                                                         #
+#                                                                                         #
+###########################################################################################
+###Jenkins Components###
+components:
+  - haproxy
+  - hatop
+  - socat
+  - htop
+
+###########################################################################################
+#                                                                                         #
+#                               Playbook Secrets                                          #
+#                                                                                         #
+#                                                                                         #
+###########################################################################################
+###Jenkins Certificate###
+jenkins_crt: '{{ jenkins_crt }}'
+
+###HAProxy Variables###
+haproxy_file_limits:
+  - { domain: haproxy, type: soft, item: nofile, value: 512000 }
+  - { domain: haproxy, type: hard, item: nofile, value: 512000 }
+
+systemctl_parameters:
+  - { name: net.ipv4.ip_nonlocal_bind, value: 1 }
+  - { name: fs.file-max, value: 1000000 }
+  - { name: fs.nr_open, value: 1000000 }
+
+jenkins_port: 8085

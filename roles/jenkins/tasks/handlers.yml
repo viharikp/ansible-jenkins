@@ -1,0 +1,10 @@
+- name: restart_jenkins
+  service:
+    name: jenkins
+    state: restarted
+
+- name: restart logrotate
+  service:
+    name: logrotate
+    enabled: yes
+    state: restarted
